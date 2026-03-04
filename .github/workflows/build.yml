@@ -262,7 +262,7 @@ jobs:
 
           cmake-mingw)
             cmake -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=${{ matrix.cmake_configuration }} \
-              -DWITH_DX12=OFF
+              -DWITH_DX12=OFF -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc" -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc"
 
             cmake --build build --config ${{ matrix.cmake_configuration }} --parallel
             BUILD_FOLDER=build/bin
