@@ -54,7 +54,7 @@ jobs:
             cmake_configuration: RelWithDebInfo
 
           - build_system: cmake-mingw
-            cmake_configuration: RelWithDebInfo
+            cmake_configuration: MinSizeRel
 
           - build_system: cmake-clang-cl
             cmake_configuration: RelWithDebInfo
