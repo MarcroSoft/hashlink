@@ -14,10 +14,10 @@ if(WIN32)
 
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         find_library(OPENAL_LIBRARY OpenAL32 PATHS ${INCLUDES_BASE_DIR}/openal/libs/Win64)
-        install(FILES ${INCLUDES_BASE_DIR}/openal/bin/Win64/soft_oal.dll TYPE BIN RENAME OpenAL32.dll)
+#        install(FILES ${INCLUDES_BASE_DIR}/openal/bin/Win64/soft_oal.dll TYPE BIN RENAME OpenAL32.dll)
     else()
         find_library(OPENAL_LIBRARY OpenAL32 PATHS ${INCLUDES_BASE_DIR}/openal/libs/Win32)
-        install(FILES ${INCLUDES_BASE_DIR}/openal/bin/Win32/soft_oal.dll TYPE BIN RENAME OpenAL32.dll)
+#        install(FILES ${INCLUDES_BASE_DIR}/openal/bin/Win32/soft_oal.dll TYPE BIN RENAME OpenAL32.dll)
     endif()
 
     set(OPENAL_INCLUDE_DIR ${INCLUDES_BASE_DIR}/openal/include)
