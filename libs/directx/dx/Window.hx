@@ -54,6 +54,8 @@ class Window {
 	public var vsync : Bool;
 	public var dragAndDropEnabled(default, set) : Bool;
 
+	var icon : Icon = null;
+
 	public function new( title : String, width : Int, height : Int, x : Int = CW_USEDEFAULT, y : Int = CW_USEDEFAULT, windowFlags : Int = RESIZABLE ) {
 		win = winCreateEx(x, y, width, height, windowFlags);
 		this.title = title;
@@ -138,6 +140,10 @@ class Window {
 	public function destroy() {
 		winDestroy(win);
 		win = null;
+		if (icon != null) {
+			icon.destroy();
+			icon = null;
+		}
 		windows.remove(this);
 	}
 
@@ -157,12 +163,30 @@ class Window {
 		winSetFocus(win);
 	}
 
+	public function setIcon(width : Int, height: Int, pixels : hl.Bytes) {
+		var newIcon = Icon.createIcon(width, height, pixels);
+		if (newIcon == null)
+			return;
+
+		winSetIcon(win, newIcon);
+
+		if (icon != null) {
+			icon.destroy();
+		}
+
+		icon = newIcon;
+	}
+
 	public function getNextEvent( e : Event ) : Bool {
 		return winGetNextEvent(win, e);
 	}
 
 	public function clipCursor( enable : Bool ) : Void {
 		winClipCursor(win, enable);
+	}
+
+	public function setDarkMode(enable : Bool) : Void {
+		winSetDarkMode(win, enable);
 	}
 
 	public static function getDisplaySettings(monitor : MonitorHandle) : Array<DisplaySetting> {
@@ -357,6 +381,10 @@ class Window {
 		return 0;
 	}
 
+	@:hlNative("?directx", "win_set_dark_mode")
+	static function winSetDarkMode(win: WinPtr, enabled: Bool) : Void {
+	}
+
 	static function winGetNextEvent( win : WinPtr, event : Dynamic ) : Bool {
 		return false;
 	}
@@ -399,6 +427,10 @@ class Window {
 	@:hlNative("directx", "detect_keyboard_layout")
 	static function dxDetectKeyboardLayout() : hl.Bytes {
 		return null;
+	}
+
+	@:hlNative("?directx", "win_set_icon")
+	static function winSetIcon(win: WinPtr, icon: Icon) : Void {
 	}
 
 }
