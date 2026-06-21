@@ -244,7 +244,7 @@ HL_PRIM bool hl_safe_cast( hl_type *t, hl_type *to ) {
 			hl_type_obj *o = t->obj;
 			hl_type_obj *oto = to->obj;
 			while( true ) {
-				if( o == oto ) return true;
+				if( o == oto || o->name == oto->name ) return true;
 				if( o->super == NULL ) return false;
 				o = o->super->obj;
 			}
@@ -802,6 +802,7 @@ static void compact_write_data( mem_context *ctx, hl_type *t, void *addr ) {
 
 static void compact_pad( mem_context *ctx, hl_type *t ) {
 	int sz = hl_pad_size(ctx->buf_pos,t);
+	compact_grow(buf, buf_pos, buf_size, sz, char);
 	ctx->buf_pos += sz;
 }
 
