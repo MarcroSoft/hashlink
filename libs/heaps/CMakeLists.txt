@@ -42,7 +42,7 @@ target_include_directories(heaps.hdll
 )
 
 target_link_libraries(heaps.hdll
-    libhl
+    ${LIBHL}
 )
 
 install(

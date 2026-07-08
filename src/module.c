@@ -390,6 +390,10 @@ static void *resolve_library( const char *lib, bool is_opt ) {
 
 	if( strcmp(lib,"std") == 0 ) {
 #	ifdef HL_WIN
+#		ifdef LIBHL_STATIC
+		// libhl is statically linked into the executable, which exports the primitives itself
+		return dlopen(NULL,RTLD_LAZY);
+#		else
 #		ifdef HL_64
 		h = dlopen("libhl64.dll",RTLD_LAZY);
 		if( h == NULL ) h = dlopen("libhl.dll",RTLD_LAZY);
@@ -398,6 +402,7 @@ static void *resolve_library( const char *lib, bool is_opt ) {
 #		endif
 		if( h == NULL && !is_opt ) hl_fatal1("Failed to load library %s","libhl.dll");
 		return h;
+#		endif
 #	else
 		return RTLD_DEFAULT;
 #	endif

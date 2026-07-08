@@ -7,7 +7,7 @@ endif()
 set_as_hdll(ui)
 
 target_link_libraries(ui.hdll
-    libhl
+    ${LIBHL}
 )
 
 install(

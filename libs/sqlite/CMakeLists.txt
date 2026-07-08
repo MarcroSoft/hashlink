@@ -11,7 +11,7 @@ target_include_directories(sqlite.hdll
 )
 
 target_link_libraries(sqlite.hdll
-    libhl
+    ${LIBHL}
 )
 
 install(

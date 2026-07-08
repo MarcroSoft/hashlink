@@ -12,7 +12,7 @@ if(WITH_DIRECTX)
     set_as_hdll(directx)
 
     target_link_libraries(directx.hdll
-        libhl
+        ${LIBHL}
         d3d11
         dxgi
         d3dcompiler
@@ -37,7 +37,7 @@ if(WITH_DX12)
     set_as_hdll(dx12)
 
     target_link_libraries(dx12.hdll
-        libhl
+        ${LIBHL}
         d3d12
         dxgi
         dxcompiler

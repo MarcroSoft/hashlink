@@ -146,7 +146,7 @@ target_include_directories(ssl.hdll
 )
 
 target_link_libraries(ssl.hdll
-    libhl
+    ${LIBHL}
     ${MBEDTLS_LIBRARIES}
 )
 

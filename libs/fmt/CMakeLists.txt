@@ -255,7 +255,7 @@ target_include_directories(fmt.hdll
 )
 
 target_link_libraries(fmt.hdll
-    libhl
+    ${LIBHL}
     ${ZLIB_LIBRARIES}
     ${PNG_LIBRARIES}
     ${TurboJPEG_LIBRARIES}

@@ -61,7 +61,7 @@ endif()
 
 set_as_hdll(uv)
 target_link_libraries(uv.hdll
-    libhl
+    ${LIBHL}
 )
 if(WIN32)
     target_include_directories(uv.hdll

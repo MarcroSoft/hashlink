@@ -1,5 +1,13 @@
 set(INCLUDES_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 
+# with WITH_STATIC_VM the runtime lives inside the hl executable,
+# so the hdlls import their hl_* symbols from it instead of libhl
+if(WITH_VM AND WITH_STATIC_VM)
+    set(LIBHL hl)
+else()
+    set(LIBHL libhl)
+endif()
+
 if (BUILD_SHARED_LIBS)
     set(HDLL_SUFFIX .hdll)
 else()

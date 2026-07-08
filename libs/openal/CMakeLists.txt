@@ -53,7 +53,7 @@ endif()
 set_as_hdll(openal)
 
 target_link_libraries(openal.hdll
-    libhl
+    ${LIBHL}
     OpenAL::OpenAL
 )
 

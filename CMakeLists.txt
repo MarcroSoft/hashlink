@@ -25,6 +25,10 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64" AND (NOT CMAKE_OSX_ARCHITECTURES
 endif()
 
 option(WITH_VM "Whether to build the Hashlink virtual machine" ${WITH_VM_DEFAULT})
+option(WITH_STATIC_VM "Statically link the runtime into the hl executable so it does not need libhl next to it" OFF)
+if(WITH_STATIC_VM AND CMAKE_VERSION VERSION_LESS 3.24)
+    message(FATAL_ERROR "WITH_STATIC_VM requires CMake 3.24 or newer")
+endif()
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 if(BUILD_SHARED_LIBS)
     # ensure third-party static libs are built with PIC
@@ -224,6 +228,41 @@ else()
     endif()
 endif()
 
+if (WITH_VM AND WITH_STATIC_VM)
+    # separate static build of the runtime, linked whole into the hl executable
+    add_library(libhl_static STATIC
+        src/gc.c
+        ${std_srcs}
+    )
+    target_include_directories(libhl_static PUBLIC src)
+    target_compile_features(libhl_static PUBLIC cxx_std_11 c_std_11)
+    set_target_properties(libhl_static
+        PROPERTIES
+        OUTPUT_NAME hl_static
+        COMPILE_DEFINITIONS "_USRDLL;LIBHL_EXPORTS;PCRE2_CODE_UNIT_WIDTH=16"
+    )
+    if(WITH_SYSTEM_PCRE2)
+        target_link_libraries(libhl_static pcre2-16)
+    else()
+        target_sources(libhl_static PRIVATE ${pcre_srcs})
+        target_include_directories(libhl_static PRIVATE include/pcre)
+        target_compile_definitions(libhl_static PRIVATE HAVE_CONFIG_H PCRE2_STATIC)
+    endif()
+    if(APPLE)
+        target_include_directories(libhl_static PRIVATE include)
+    endif()
+    if(WIN32)
+        target_link_libraries(libhl_static ws2_32 user32 winmm)
+    else()
+        target_link_libraries(libhl_static m dl)
+        if(ANDROID)
+            target_link_libraries(libhl_static log)
+        else()
+            target_link_libraries(libhl_static pthread)
+        endif()
+    endif()
+endif()
+
 if (WITH_VM)
     add_executable(hl
         src/code.c
@@ -243,10 +282,33 @@ if (WITH_VM)
         )
     endif()
 
-    target_link_libraries(hl libhl)
+    if(WITH_STATIC_VM)
+        # embed the whole runtime and export its symbols, so that "std"
+        # primitives (and hdlls) resolve against the executable itself
+        target_link_libraries(hl PRIVATE $<LINK_LIBRARY:WHOLE_ARCHIVE,libhl_static>)
+        target_compile_definitions(hl PRIVATE LIBHL_STATIC)
+        target_include_directories(hl INTERFACE src)
+        # propagate the same system libraries to hdlls as libhl used to
+        if(WIN32)
+            target_link_libraries(hl INTERFACE ws2_32 user32 winmm)
+        else()
+            target_link_libraries(hl INTERFACE m dl)
+            if(ANDROID)
+                target_link_libraries(hl INTERFACE log)
+            else()
+                target_link_libraries(hl INTERFACE pthread)
+            endif()
+        endif()
+        set_target_properties(hl PROPERTIES
+            ENABLE_EXPORTS ON
+            ARCHIVE_OUTPUT_NAME hlexe
+        )
+    else()
+        target_link_libraries(hl PRIVATE libhl)
+    endif()
 
     if (WIN32)
-        target_link_libraries(hl user32)
+        target_link_libraries(hl PRIVATE user32)
     endif()
 endif()
 
@@ -353,26 +415,30 @@ if(BUILD_TESTING)
     #####################
     # uvsample.c
 
-    add_custom_command(OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample/uvsample.c
-        COMMAND ${HAXE_COMPILER}
-            -hl ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample/uvsample.c
-            -cp ${CMAKE_SOURCE_DIR}/other/uvsample -main UVSample
-    )
-    add_executable(uvsample
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample/uvsample.c
-    )
-    set_target_properties(uvsample
-        PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample
-    )
-    target_include_directories(uvsample
-        PRIVATE ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample
-    )
-    target_link_libraries(uvsample
-        libhl
-        uv.hdll
-        ${HLC_LIBRARIES}
-    )
+    # with WITH_STATIC_VM the hdlls bind to the hl executable, so they
+    # cannot be linked into a standalone HL/C executable
+    if(NOT WITH_STATIC_VM)
+        add_custom_command(OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample/uvsample.c
+            COMMAND ${HAXE_COMPILER}
+                -hl ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample/uvsample.c
+                -cp ${CMAKE_SOURCE_DIR}/other/uvsample -main UVSample
+        )
+        add_executable(uvsample
+            ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample/uvsample.c
+        )
+        set_target_properties(uvsample
+            PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample
+        )
+        target_include_directories(uvsample
+            PRIVATE ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test/uvsample
+        )
+        target_link_libraries(uvsample
+            libhl
+            uv.hdll
+            ${HLC_LIBRARIES}
+        )
+    endif()
 
     #####################
     # header_macro_clashes.c
@@ -417,9 +483,11 @@ if(BUILD_TESTING)
     add_test(NAME threads
         COMMAND threads
     )
-    add_test(NAME uvsample
-        COMMAND uvsample 6002
-    )
+    if(NOT WITH_STATIC_VM)
+        add_test(NAME uvsample
+            COMMAND uvsample 6002
+        )
+    endif()
 endif()
 
 #####################

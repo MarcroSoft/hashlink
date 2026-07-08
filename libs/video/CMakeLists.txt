@@ -19,7 +19,7 @@ if(WIN32)
     )
 
     target_link_libraries(video.hdll
-        libhl
+        ${LIBHL}
         ${FFMPEG_LIBRARIES}
     )
 

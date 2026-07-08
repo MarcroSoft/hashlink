@@ -38,7 +38,7 @@ endif()
 
 set_as_hdll(sdl)
 target_link_libraries(sdl.hdll
-    libhl
+    ${LIBHL}
     SDL3::SDL3
 )
 if(APPLE)
@@ -63,7 +63,7 @@ if((APPLE OR UNIX) AND NOT ANDROID)
         ${OPENGL_INCLUDE_DIR}
     )
     target_link_libraries(sdl.hdll
-        libhl
+        ${LIBHL}
         ${OPENGL_gl_LIBRARY}
     )
 endif()
