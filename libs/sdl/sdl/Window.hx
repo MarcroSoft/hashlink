@@ -78,6 +78,7 @@ class Window {
 		while( true ) {
 			win = winCreateEx(x, y, width, height, sdlFlags);
 			if( win == null ) throw "Failed to create window";
+			if( sdlFlags & SDL_WINDOW_VULKAN != 0 ) break;
 			glctx = winGetGLContext(win);
 			if( glctx == null || !GL.init() || !testGL() ) {
 				destroy();
@@ -265,7 +266,7 @@ class Window {
 
 	function set_vsync(v) {
 		if( vsync == v ) return v;
-		setVsync(v);
+		if( glctx != null ) setVsync(v);
 		return vsync = v;
 	}
 
@@ -295,7 +296,7 @@ class Window {
 		Set the current window you will render to (in case of multiple windows)
 	**/
 	public function renderTo() {
-		winRenderTo(win, glctx);
+		if( glctx != null ) winRenderTo(win, glctx);
 	}
 
 	public function present() {
@@ -309,11 +310,37 @@ class Window {
 		lastFrame = haxe.Timer.stamp();
 	}
 
+	public function vkCreateSurface( instance : hl.Abstract<"vk_instance"> ) : hl.Abstract<"vk_surface"> {
+		return winVkCreateSurface(win, instance);
+	}
+
+	public static function vkGetInstanceExtensions() : Array<String> {
+		var names = vkGetInstanceExtensionsNative();
+		if( names == null ) return null;
+		return [for( i in 0...names.length ) @:privateAccess String.fromUTF8(names[i])];
+	}
+
 	public function destroy() {
 		try winDestroy(win, glctx) catch( e : Dynamic ) {};
 		win = null;
 		glctx = null;
 		windows.remove(this);
+	}
+
+	public function setMaximized(maximized: Bool) : Void {
+		winSetMaximized(win, maximized);
+	}
+
+	@:hlNative("?sdl", "win_set_maximized")
+	static function winSetMaximized( win : WinPtr, maximized : Bool ) {}
+
+	public function isMaximized() {
+		return winMaximized(win);
+	}
+
+	@:hlNative("?sdl", "win_maximized")
+	static function winMaximized( win : WinPtr ) : Bool {
+		return false;
 	}
 
 	public function maximize() {
@@ -415,6 +442,16 @@ class Window {
 	}
 
 	static function setVsync( b : Bool ) {
+	}
+
+	@:hlNative("?sdl", "win_vk_create_surface")
+	static function winVkCreateSurface( win : WinPtr, instance : hl.Abstract<"vk_instance"> ) : hl.Abstract<"vk_surface"> {
+		return null;
+	}
+
+	@:hlNative("?sdl", "vk_get_instance_extensions")
+	static function vkGetInstanceExtensionsNative() : hl.NativeArray<hl.Bytes> {
+		return null;
 	}
 
 	static function setWindowGrab( win : WinPtr, grab : Bool ) {

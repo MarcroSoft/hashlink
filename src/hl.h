@@ -27,7 +27,7 @@
 	https://github.com/HaxeFoundation/hashlink/wiki/
 **/
 
-#define HL_VERSION	0x011100
+#define HL_VERSION	0x020000
 
 #if defined(_WIN32)
 #	define HL_WIN
@@ -69,11 +69,11 @@
 #	define HL_MOBILE
 #endif
 
-#ifdef __ORBIS__
+#if defined(__ORBIS__) || defined(__PROSPERO__)
 #	define HL_PS
 #endif
 
-#ifdef __NX__
+#ifdef __NINTENDO__
 #	define HL_NX
 #endif
 
@@ -280,14 +280,14 @@ HL_API int uvszprintf( uchar *out, int out_size, const uchar *fmt, va_list argli
 HL_API void uprintf( const uchar *fmt, const uchar *str );
 C_FUNCTION_END
 
-#if defined(HL_VCC)
-#	define hl_debug_break()	if( hl_detect_debugger() ) __debugbreak()
-#elif defined(HL_PS) && defined(_DEBUG)
+#if defined(HL_PS) && defined(_DEBUG)
 #	define hl_debug_break()	__debugbreak()
 #elif defined(HL_NX)
 C_FUNCTION_BEGIN
 HL_API void hl_debug_break( void );
 C_FUNCTION_END
+#elif defined(HL_VCC)
+#	define hl_debug_break()	if( hl_detect_debugger() ) __debugbreak()
 #elif !defined(HL_CONSOLE)
 
 // use __builtin_debugtrap when available
@@ -622,6 +622,7 @@ typedef struct {
 	void (*throw_jump)(jmp_buf, int);
 	uchar* (*resolve_symbol)(void* addr, uchar* out, int* outSize);
 	int (*capture_stack)(void** stack, int size);
+	bool (*capture_break_context)(void **rip, void **regs);
 	bool (*reload_check)(vbyte* alt_file);
 	void* (*static_call)(void* fun, hl_type* t, void** args, vdynamic* out);
 	void* (*get_wrapper)(hl_type* t);
@@ -891,6 +892,8 @@ HL_API void hl_throw_buffer( hl_buffer *b );
 #undef _STRING
 #define _STRING						_OBJ(_BYTES _I32)
 
+#define HL_CALLB					"C"
+
 #if defined(LIBHL_EXPORTS)
 #	define DEFINE_PRIM(t,name,args)						DEFINE_PRIM_WITH_NAME(t,hl_##name,args,name)
 #else
@@ -969,6 +972,7 @@ struct _hl_trap_ctx {
 #define HL_TRACK_MASK		(HL_TRACK_ALLOC | HL_TRACK_CAST | HL_TRACK_DYNFIELD | HL_TRACK_DYNCALL)
 
 #define HL_MAX_EXTRA_STACK 64
+#define HL_BREAK_REGS 32
 
 #ifdef HL_MAC
 #include <mach/mach.h>
@@ -992,12 +996,22 @@ typedef struct {
 	char thread_name[128];
 	jmp_buf gc_regs;
 	void *exc_stack_trace[HL_EXC_MAX_STACK];
+	void *break_rip;
+	void *break_regs[HL_BREAK_REGS];
 	void *extra_stack_data[HL_MAX_EXTRA_STACK];
 	int extra_stack_size;
+	volatile int gc_ctx_seq;
 	#ifdef HL_MAC
 	thread_t mach_thread_id;
 	pthread_t pthread_id;
 	#endif
+	// where the gc context was saved (return address and stack pointer in the frame that saved it),
+	// and in its caller for hl_blocking which returns before the thread blocks : lets the profiler
+	// unwind the stack of a blocked thread
+	void *gc_ctx_pc;
+	void *gc_ctx_sp;
+	void *gc_ctx_caller_pc;
+	void *gc_ctx_caller_sp;
 } hl_thread_info;
 
 typedef struct {
@@ -1036,7 +1050,7 @@ HL_API hl_track_info hl_track;
 
 C_FUNCTION_END
 
-#ifndef HL_DISABLE_LEGACY_FFI
+#ifdef HL_DISABLE_LEGACY_FFI
 #	undef C_FUNCTION_BEGIN
 #	undef C_FUNCTION_END
 #endif

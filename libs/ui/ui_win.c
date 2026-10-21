@@ -282,11 +282,14 @@ HL_PRIM void HL_NAME(ui_close_console)() {
 	FreeConsole();
 }
 
+// declared in utils.cpp, because COM objects don't play nicely with pure C code
+bool chooseFolder(const wchar_t* title, const wchar_t* defaultFolder, wchar_t* outBuffer);
 
 HL_PRIM vbyte *HL_NAME(ui_choose_file)( bool forSave, vdynamic *options ) {
 	wref *win = (wref*)hl_dyn_getp(options,hl_hash_utf8("window"), &hlt_abstract);
 	varray *filters = (varray*)hl_dyn_getp(options,hl_hash_utf8("filters"),&hlt_array);
 	wchar_t *fileName = (wchar_t*)hl_dyn_getp(options,hl_hash_utf8("fileName"),&hlt_bytes);
+	bool isFolder = (bool)hl_dyn_geti(options,hl_hash_utf8("isFolder"),&hlt_bool);
 	OPENFILENAME op;
 	wchar_t filterStr[1024];
 	wchar_t outputFile[1024] = {0};
@@ -313,15 +316,23 @@ HL_PRIM vbyte *HL_NAME(ui_choose_file)( bool forSave, vdynamic *options ) {
 	op.lpstrInitialDir = hl_dyn_getp(options,hl_hash_utf8("directory"),&hlt_bytes);
 	op.lpstrTitle = hl_dyn_getp(options,hl_hash_utf8("title"),&hlt_bytes);
 	op.Flags |= OFN_NOCHANGEDIR;
+	// can be called from any thread: the GC must not wait for the dialog
+	bool ok;
+	hl_blocking(true);
 	if( forSave ) {
 		op.Flags |= OFN_OVERWRITEPROMPT;
-		if( !GetSaveFileName(&op) )
-			return NULL;
+		ok = GetSaveFileName(&op);
 	} else {
-		op.Flags |= OFN_CREATEPROMPT;
-		if( !GetOpenFileName(&op) )
-			return NULL;
+		if (!isFolder) {
+			op.Flags |= OFN_CREATEPROMPT;
+			ok = GetOpenFileName(&op);
+		} else {
+			ok = chooseFolder(op.lpstrTitle, op.lpstrInitialDir, outputFile);
+		}
 	}
+	hl_blocking(false);
+	if( !ok )
+		return NULL;
 	return hl_copy_bytes((vbyte*)outputFile, (int)(wcslen(outputFile)+1)*2);
 }
 
@@ -388,7 +399,7 @@ DEFINE_PRIM(_VOID, ui_winlog_set_text, _WIN _BYTES _BOOL);
 DEFINE_PRIM(_VOID, ui_win_set_text, _WIN _BYTES);
 DEFINE_PRIM(_VOID, ui_win_set_enable, _WIN _BOOL);
 DEFINE_PRIM(_VOID, ui_win_destroy, _WIN);
-DEFINE_PRIM(_I32, ui_loop, _BOOL);
+DEFINE_PRIM(_I32 HL_CALLB, ui_loop, _BOOL);
 DEFINE_PRIM(_VOID, ui_stop_loop, _NO_ARG);
 DEFINE_PRIM(_VOID, ui_close_console, _NO_ARG);
 

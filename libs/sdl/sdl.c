@@ -6,6 +6,7 @@
 #include <locale.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_vulkan.h>
 
 #ifdef HL_ANDROID
 // SDL3 no longer pulls SDL_main.h (where SDL_SetMainReady lives) in via SDL.h.
@@ -607,7 +608,10 @@ HL_PRIM SDL_Window *HL_NAME(win_create_ex)(int x, int y, int width, int height, 
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height);
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x);
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y);
-	SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
+	if( sdlFlags & SDL_WINDOW_OPENGL )
+		SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
+	if( sdlFlags & SDL_WINDOW_VULKAN )
+		SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, true);
 	if( sdlFlags & SDL_WINDOW_BORDERLESS )
 		SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true);
 	if( sdlFlags & SDL_WINDOW_FULLSCREEN )
@@ -769,6 +773,19 @@ HL_PRIM void HL_NAME(win_set_max_size)(SDL_Window *win, int width, int height) {
 	SDL_SetWindowMaximumSize(win, width, height);
 }
 
+HL_PRIM void HL_NAME(win_set_maximized)(SDL_Window* win, bool maximize) {
+	if (maximize) {
+		SDL_MaximizeWindow(win);
+	} else {
+		SDL_RestoreWindow(win);
+	}
+}
+
+HL_PRIM bool HL_NAME(win_maximized)(SDL_Window* win) {
+	SDL_WindowFlags flags = SDL_GetWindowFlags(win);
+	return (flags & SDL_WINDOW_MAXIMIZED) != 0;
+}
+
 HL_PRIM void HL_NAME(win_get_size)(SDL_Window *win, int *width, int *height) {
 	SDL_GetWindowSize(win, width, height);
 }
@@ -861,6 +878,8 @@ DEFINE_PRIM(_VOID, win_get_position, TWIN _REF(_I32) _REF(_I32));
 DEFINE_PRIM(_VOID, win_set_size, TWIN _I32 _I32);
 DEFINE_PRIM(_VOID, win_set_min_size, TWIN _I32 _I32);
 DEFINE_PRIM(_VOID, win_set_max_size, TWIN _I32 _I32);
+DEFINE_PRIM(_VOID, win_set_maximized, TWIN _BOOL);
+DEFINE_PRIM(_BOOL, win_maximized, TWIN);
 DEFINE_PRIM(_VOID, win_get_size, TWIN _REF(_I32) _REF(_I32));
 DEFINE_PRIM(_VOID, win_get_min_size, TWIN _REF(_I32) _REF(_I32));
 DEFINE_PRIM(_VOID, win_get_max_size, TWIN _REF(_I32) _REF(_I32));
@@ -871,6 +890,29 @@ DEFINE_PRIM(_VOID, win_swap_window, TWIN);
 DEFINE_PRIM(_VOID, win_render_to, TWIN TGL);
 DEFINE_PRIM(_VOID, win_destroy, TWIN TGL);
 DEFINE_PRIM(_I32, win_get_id, TWIN);
+
+HL_PRIM varray *HL_NAME(vk_get_instance_extensions)() {
+	Uint32 count = 0;
+	char const * const *names = SDL_Vulkan_GetInstanceExtensions(&count);
+	if( !names ) return NULL;
+	varray *arr = hl_alloc_array(&hlt_bytes, count);
+	for(Uint32 i=0;i<count;i++)
+		hl_aptr(arr,vbyte*)[i] = (vbyte*)names[i];
+	return arr;
+}
+
+DEFINE_PRIM(_ARR, vk_get_instance_extensions, _NO_ARG);
+
+#ifdef HL_64
+HL_PRIM VkSurfaceKHR HL_NAME(win_vk_create_surface)( SDL_Window *win, VkInstance instance ) {
+	VkSurfaceKHR surface;
+	if( !SDL_Vulkan_CreateSurface(win, instance, NULL, &surface) )
+		return NULL;
+	return surface;
+}
+
+DEFINE_PRIM(_ABSTRACT(vk_surface), win_vk_create_surface, TWIN _ABSTRACT(vk_instance));
+#endif
 
 // game controller
 
@@ -1156,3 +1198,108 @@ DEFINE_PRIM(_ARR, get_display_modes, _I32);
 DEFINE_PRIM(_DYN, get_current_display_mode, _I32 _BOOL);
 DEFINE_PRIM(_ARR, get_devices, _NO_ARG);
 DEFINE_PRIM(_BYTES, get_error, _NO_ARG);
+
+// SDL Dialogs API
+typedef struct {
+	vclosure *closure;
+	SDL_DialogFileFilter* filters;
+	int filters_size;
+} dialog_data;
+
+static dialog_data* CreateFileDialogData( vclosure *callback, varray *filters ) {
+	dialog_data *data = malloc( sizeof( dialog_data ) );
+	data->closure = callback;
+	hl_add_root(&data->closure);
+
+	data->filters_size = filters ? filters->size : 0;
+
+	if( data->filters_size > 0 ) {
+		SDL_DialogFileFilter *sdl_filters = (SDL_DialogFileFilter *)malloc(sizeof( SDL_DialogFileFilter ) * filters->size );
+
+		for(int i=0;i<data->filters_size;i++) {
+			vdynamic *filter = hl_aptr(filters, vdynamic*)[i];
+			const char *name = (const char*) hl_dyn_getp(filter,hl_hash_utf8("name"),&hlt_bytes);
+			const char *pattern = (const char*) hl_dyn_getp(filter,hl_hash_utf8("pattern"),&hlt_bytes);
+
+			sdl_filters[i].name = strdup(name);
+			sdl_filters[i].pattern = strdup(pattern);
+		}
+
+		data->filters = sdl_filters;
+	}
+	else 
+		data->filters = NULL;
+
+	return data;
+}
+
+static void FileDialogCallback(void *userdata, const char* const *filelist, int filter) {
+	// these callbacks may come via threads on some platforms
+	bool on_unregistered_thread = !hl_get_thread();
+	if( on_unregistered_thread ) {
+		vdynamic *ctx;
+		hl_register_thread(&ctx);
+	}
+
+	dialog_data *data = (dialog_data*)userdata;
+	int count = 0;
+
+	varray *array = NULL;
+	if( filelist ) {
+		const char * const *p = filelist;
+		while(*p++)
+			count++;
+
+		array = hl_alloc_array(&hlt_bytes, count );
+		vbyte **array_ptr = (vbyte **)hl_aptr(array, vbyte*);
+
+		for(int i = 0; i < count; i++) {
+			size_t len = strlen(filelist[i]) + 1; // Include the null terminator
+			vbyte *bytes = hl_alloc_bytes( len );
+			memcpy(bytes, filelist[i], len);
+			array_ptr[i] = bytes;
+		}
+	}
+
+	hl_call1( void, data->closure, varray*, array );
+	hl_remove_root( &data->closure );
+
+	for( int i=0; i<data->filters_size; i++) {
+		free( data->filters[i].name );
+		free( data->filters[i].pattern );
+	}
+
+	free( data->filters );
+	free( data );
+
+	if( on_unregistered_thread )
+		hl_unregister_thread();
+}
+
+HL_PRIM void HL_NAME(show_open_file_dialog)( vclosure *callback, SDL_Window *window, varray *filters, vstring *default_location, bool allow_many ) {
+	const char *location = default_location ? hl_to_utf8(default_location->bytes) : NULL;
+	
+	dialog_data *data = CreateFileDialogData( callback, filters );
+	
+	SDL_ShowOpenFileDialog( FileDialogCallback, data, window, data->filters, filters ? filters->size : 0, location, allow_many );
+}
+
+HL_PRIM void HL_NAME(show_open_folder_dialog)( vclosure *callback, SDL_Window *window, vstring *default_location, bool allow_many ) {
+	const char *location = default_location ? hl_to_utf8(default_location->bytes) : NULL;
+	
+	dialog_data *data = CreateFileDialogData( callback, NULL );
+	
+	SDL_ShowOpenFolderDialog( FileDialogCallback, data, window, location, allow_many );
+}
+
+HL_PRIM void HL_NAME(show_save_file_dialog)( vclosure *callback, SDL_Window *window, varray *filters, vstring *default_location ) {
+	const char *location = default_location ? hl_to_utf8(default_location->bytes) : NULL;
+	
+	dialog_data *data = CreateFileDialogData( callback, filters );
+
+	SDL_ShowSaveFileDialog( FileDialogCallback, data, window, data->filters, filters ? filters->size : 0, location );
+}
+
+DEFINE_PRIM(_VOID, show_open_file_dialog, _FUN(_VOID, _ARR) TWIN _ARR _STRING _BOOL );
+DEFINE_PRIM(_VOID, show_open_folder_dialog, _FUN(_VOID, _ARR) TWIN _STRING _BOOL );
+DEFINE_PRIM(_VOID, show_save_file_dialog, _FUN(_VOID, _ARR) TWIN _ARR _STRING );

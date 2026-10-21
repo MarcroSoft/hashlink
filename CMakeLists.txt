@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(HL_VERSION_MAJOR 1)
-set(HL_VERSION_MINOR 17)
+set(HL_VERSION_MAJOR 2)
+set(HL_VERSION_MINOR 0)
 set(HL_VERSION_PATCH 0)
 set(HL_VERSION ${HL_VERSION_MAJOR}.${HL_VERSION_MINOR}.${HL_VERSION_PATCH})
 
@@ -219,7 +219,7 @@ endif()
 if(WIN32)
     target_link_libraries(libhl ws2_32 user32 winmm)
 else()
-    target_link_libraries(libhl m dl)
+    target_link_libraries(libhl m ${CMAKE_DL_LIBS})
 
     if(ANDROID)
         target_link_libraries(libhl log)
@@ -267,6 +267,10 @@ if (WITH_VM)
     add_executable(hl
         src/code.c
         src/jit.c
+        src/jit_emit.c
+        src/jit_regs.c
+        src/jit_x86_64.c
+        src/jit_dump.c
         src/main.c
         src/module.c
         src/debugger.c
